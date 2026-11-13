@@ -36,10 +36,10 @@ app.post("/api/code", async (req, res) => {
   db.pending[email] = { code, salt, hash: hash(pw, salt), exp: Date.now() + 10 * 60000, tries: 0 };
   save();
   try {
-    const r = await fetch("https://api.resend.com/emails", {
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
-      headers: { Authorization: "Bearer " + process.env.RESEND_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: process.env.MAIL_FROM, to: [email], subject: "Dein Flux-Code", text: "Dein Code: " + code + "\nGültig für 10 Minuten." })
+      headers: { "api-key": process.env.BREVO_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: { name: "Flux", email: process.env.MAIL_FROM }, to: [{ email }], subject: "Dein Flux-Code", textContent: "Dein Code: " + code + "\nGültig für 10 Minuten." })
     });
     if (!r.ok) throw new Error(await r.text());
     res.json({ ok: true });
