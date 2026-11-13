@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flux</title>
+<style>
+:root{--bg:#fff;--s:#f2f2f2;--s2:#e5e5e5;--t:#0f0f0f;--t2:#606060;--red:#ff2e2e;--acc:#0f0f0f;--acct:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#0f0f0f;--s:#272727;--s2:#3a3a3a;--t:#f1f1f1;--t2:#aaa;--acc:#f1f1f1;--acct:#0f0f0f}}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--t);font:15px/1.4 Roboto,Arial,sans-serif;padding:env(safe-area-inset-top) 0 80px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:8px;padding:8px 12px}
+.logo{display:flex;align-items:center;gap:4px;font-weight:800;font-size:20px;letter-spacing:-1px}
+.logo i{background:var(--red);width:30px;height:21px;border-radius:6px;display:grid;place-items:center}
+.logo i:after{content:"";border-left:8px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:2px}
+header input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--s2);color:var(--t);padding:8px 14px;border-radius:20px;font-size:14px;outline:0}
+button{font:inherit;cursor:pointer;border:0;color:var(--t);background:var(--s);padding:8px 14px;border-radius:18px;font-weight:500}
+.pri{background:var(--acc);color:var(--acct)}
+.red{background:var(--red);color:#fff}
+h2{font-size:17px;padding:10px 12px 6px;display:flex;align-items:center;gap:8px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--red);animation:p 1.2s infinite}
+@keyframes p{50%{opacity:.25}}
+.grid{display:grid;gap:18px}
+@media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));padding:0 12px}}
+.card{cursor:pointer}
+.th{position:relative;aspect-ratio:16/9;background:#000;display:grid;place-items:center;overflow:hidden}
+.th video{width:100%;height:100%;object-fit:cover}
+@media(min-width:700px){.th{border-radius:12px}}
+.badge{position:absolute;left:8px;bottom:8px;background:var(--red);color:#fff;font-size:12px;font-weight:700;padding:1px 6px;border-radius:4px}
+.meta{display:flex;gap:10px;padding:10px 12px 0}
+.av{width:36px;height:36px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:700;background:#7b2cbf}
+.meta small{color:var(--t2);display:block;font-size:13px}
+.empty{color:var(--t2);text-align:center;padding:40px 20px}
+nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg);display:flex;justify-content:space-around;align-items:center;padding:6px 0 calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--s2);z-index:6}
+nav button{background:none;font-size:12px;color:var(--t2)}
+nav .on{color:var(--t)}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:none;align-items:flex-end;justify-content:center}
+.ov.show{display:flex}
+.box{background:var(--bg);width:100%;max-width:560px;max-height:92%;overflow:auto;border-radius:16px 16px 0 0;padding:16px;display:grid;gap:12px}
+@media(min-width:700px){.ov{align-items:center}.box{border-radius:16px}}
+.box input{background:var(--s);border:1px solid var(--s2);color:var(--t);padding:12px;border-radius:10px;font-size:15px;width:100%}
+.box video,.box iframe{width:100%;aspect-ratio:16/9;background:#000;border:0;border-radius:12px}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+.note{color:var(--t2);font-size:13px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--acc);color:var(--acct);padding:10px 16px;border-radius:10px;z-index:30;display:none}
+</style>
+</head>
+<body>
+<header><div class="logo"><i></i>Flux</div><input id="q" placeholder="Suchen" oninput="render()"><button id="me" onclick="account()">Anmelden</button></header>
+<main id="main"></main>
+<nav>
+  <button class="on" data-t="home" onclick="tab('home')">Start</button>
+  <button data-t="live" onclick="tab('live')">Live</button>
+  <button class="red" onclick="goLive()">Live gehen</button>
+  <button data-t="subs" onclick="tab('subs')">Abos</button>
+  <button onclick="upload()">Hochladen</button>
+</nav>
+<div class="ov" id="ov" onclick="if(event.target===this)closeOv()"><div class="box" id="box"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+var TAB="home",tok=null,me=null,subs=[],V=[],L=[],stream=null,pc=null,liveId=null,tim=null,pend=null;
+try{tok=localStorage.getItem("fx_tok")}catch(e){}
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return "&#"+c.charCodeAt(0)+";"})}
+function toast(m){var t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(t._t);t._t=setTimeout(function(){t.style.display="none"},2800)}
+async function api(p,o){o=o||{};o.headers=o.headers||{};if(tok)o.headers.Authorization="Bearer "+tok;
+ if(o.json){o.headers["Content-Type"]="application/json";o.body=JSON.stringify(o.json);o.method=o.method||"POST"}
+ var r=await fetch(p,o),d=await r.json().catch(function(){return{}});if(!r.ok)throw new Error(d.error||"Fehler");return d}
+async function load(){
+ try{V=await api("/api/videos");L=await api("/api/lives")}catch(e){}
+ if(tok){try{var m=await api("/api/me");me=m.channel;subs=m.subs}catch(e){tok=null;me=null;try{localStorage.removeItem("fx_tok")}catch(x){}}}
+ render()}
+function ago(t){var m=Math.floor((Date.now()-t)/60000);return m<60?"vor "+Math.max(m,1)+" Min.":m<1440?"vor "+Math.floor(m/60)+" Std.":"vor "+Math.floor(m/1440)+" Tagen"}
+function card(h,t,sub,badge,fn){return '<div class="card" onclick="'+fn+'"><div class="th">'+h+(badge?'<span class="badge">LIVE</span>':'')+'</div><div class="meta"><div class="av">'+esc(sub[0][0]||"?").toUpperCase()+'</div><div><b>'+esc(t)+'</b><small>'+esc(sub[0])+' · '+sub[1]+'</small></div></div></div>'}
+function render(){
+ var q=$("q").value.toLowerCase(),h="";
+ var lv=L.filter(function(l){return l.title.toLowerCase().indexOf(q)>-1&&(TAB!="subs"||subs.indexOf(l.channel.id)>-1)});
+ var vd=V.filter(function(v){return v.title.toLowerCase().indexOf(q)>-1&&(TAB!="subs"||subs.indexOf(v.channel.id)>-1)});
+ if(TAB!="live"&&lv.length||TAB=="live")h+='<h2><span class="dot"></span>Jetzt live</h2>'+(lv.length?'<div class="grid">'+lv.map(function(l){return card('<span style="font-size:40px">🔴</span>',l.title,[l.channel.name,"live"],1,"watchLive('"+l.id+"')")}).join("")+'</div>':'<p class="empty">Gerade ist niemand live.</p>');
+ if(TAB!="live")h+='<h2>Videos</h2>'+(vd.length?'<div class="grid">'+vd.map(function(v){return card('<video src="'+esc(v.file)+'#t=0.5" preload="metadata" muted></video>',v.title,[v.channel.name,v.views+" Aufrufe · "+ago(v.t)],0,"watchVid('"+v.id+"')")}).join("")+'</div>':'<p class="empty">'+(TAB=="subs"?"Keine Inhalte von deinen Abos.":"Noch keine Videos. Lade das erste hoch!")+'</p>');
+ $("main").innerHTML=h;$("me").textContent=me?me.name:"Anmelden"}
+function tab(t){TAB=t;document.querySelectorAll("nav [data-t]").forEach(function(b){b.className=b.dataset.t==t?"on":""});render();scrollTo(0,0)}
+function openOv(h){$("box").innerHTML=h;$("ov").className="ov show"}
+function closeOv(){$("ov").className="ov";$("box").innerHTML="";endLive()}
+function subBtn(c){var on=subs.indexOf(c.id)>-1;return '<button class="pri" id="sb" onclick="sub(\''+c.id+'\')">'+(on?'Abonniert':'Abonnieren')+'</button>'}
+async function sub(id){if(!tok){closeOv();return login()}try{subs=(await api("/api/sub/"+id,{method:"POST"})).subs;$("sb").textContent=subs.indexOf(id)>-1?"Abonniert":"Abonnieren";render()}catch(e){toast(e.message)}}
+function watchVid(id){var v=V.find(function(x){return x.id==id});api("/api/videos/"+id+"/view",{method:"POST"}).catch(function(){});
+ openOv('<video src="'+esc(v.file)+'" controls autoplay playsinline></video><b>'+esc(v.title)+'</b><div class="row"><span style="flex:2">'+esc(v.channel.name)+'</span>'+subBtn(v.channel)+'</div>')}
+function watchLive(id){var l=L.find(function(x){return x.id==id});
+ openOv('<iframe src="https://iframe.videodelivery.net/'+encodeURIComponent(l.uid)+'?autoplay=true" allow="autoplay;fullscreen" allowfullscreen></iframe><b>🔴 '+esc(l.title)+'</b><div class="row"><span style="flex:2">'+esc(l.channel.name)+'</span>'+subBtn(l.channel)+'</div>')}
+function account(){if(!tok)return login();openOv('<b>'+esc(me?me.name:"")+'</b><button onclick="logout()">Abmelden</button>')}
+function logout(){tok=null;me=null;subs=[];try{localStorage.removeItem("fx_tok")}catch(e){}closeOv();render()}
+function login(){openOv('<b style="font-size:18px">Anmelden</b><input id="em" type="email" placeholder="E-Mail"><input id="pw" type="password" placeholder="Passwort (8 bis 47 Zeichen)" maxlength="47"><button class="pri" onclick="sendCode()">Code senden</button><p class="note">Videos ansehen geht ohne Konto. Zum Hochladen, Live gehen und Abonnieren brauchst du eins.</p>')}
+async function sendCode(){var e=$("em").value.trim().toLowerCase(),p=$("pw").value;
+ try{await api("/api/code",{json:{email:e,password:p}});pend=e;openOv('<b style="font-size:18px">Code eingeben</b><p class="note">Wir haben dir einen 16-stelligen Code an '+esc(e)+' geschickt.</p><input id="cd" maxlength="16" placeholder="Code"><button class="pri" onclick="verify()">Bestätigen</button>')}catch(x){toast(x.message)}}
+async function verify(){try{var d=await api("/api/verify",{json:{email:pend,code:$("cd").value}});tok=d.token;try{localStorage.setItem("fx_tok",tok)}catch(e){}closeOv();await load();toast("Angemeldet")}catch(x){toast(x.message)}}
+function upload(){if(!tok)return login();openOv('<b style="font-size:18px">Video hochladen</b><input id="ut" placeholder="Titel"><input id="uf" type="file" accept="video/*"><button class="pri" id="ub" onclick="doUp()">Hochladen</button>')}
+async function doUp(){var f=$("uf").files[0];if(!f)return toast("Bitte Video wählen");var fd=new FormData();fd.append("title",$("ut").value);fd.append("video",f);$("ub").textContent="Lädt hoch …";
+ try{await api("/api/videos",{method:"POST",body:fd});closeOv();await load();toast("Video veröffentlicht")}catch(x){toast(x.message);$("ub").textContent="Hochladen"}}
+function goLive(){if(!tok)return login();openOv('<b style="font-size:18px">Live gehen</b><input id="lt" placeholder="Titel deines Streams"><div class="row"><button class="pri" onclick="startLive(\'cam\')">📷 Kamera</button><button class="pri" onclick="startLive(\'scr\')">🖥 Bildschirm</button></div><p class="note">Keine Mindestzahl an Abos nötig.</p>')}
+async function startLive(m){var t=$("lt").value||"Livestream";
+ try{stream=m=="cam"?await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:true}):await navigator.mediaDevices.getDisplayMedia({video:true,audio:true})}catch(e){return toast("Kein Zugriff auf Kamera oder Bildschirm")}
+ try{var d=await api("/api/live",{json:{title:t}});liveId=d.id;
+  pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.cloudflare.com:3478"}],bundlePolicy:"max-bundle"});
+  stream.getTracks().forEach(function(x){pc.addTransceiver(x,{direction:"sendonly"})});
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(function(r){if(pc.iceGatheringState=="complete")return r();pc.onicegatheringstatechange=function(){pc.iceGatheringState=="complete"&&r()};setTimeout(r,2000)});
+  var r=await fetch(d.whip,{method:"POST",headers:{"Content-Type":"application/sdp"},body:pc.localDescription.sdp});
+  if(!r.ok)throw new Error("Verbindung zu Cloudflare fehlgeschlagen");
+  await pc.setRemoteDescription({type:"answer",sdp:await r.text()});
+  openOv('<video id="pv" autoplay muted playsinline></video><b>🔴 LIVE · '+esc(t)+'</b><button class="red" onclick="closeOv()">Stream beenden</button>');
+  $("pv").srcObject=stream;tim=setInterval(function(){api("/api/live/"+liveId+"/ping",{method:"POST"}).catch(function(){})},15000);
+  stream.getVideoTracks()[0].onended=closeOv;load()}
+ catch(e){toast(e.message);endLive()}}
+function endLive(){if(tim){clearInterval(tim);tim=null}if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}if(pc){pc.close();pc=null}
+ if(liveId){var i=liveId;liveId=null;api("/api/live/"+i,{method:"DELETE"}).then(load).catch(function(){})}}
+setInterval(function(){if(!stream)api("/api/lives").then(function(l){L=l;render()}).catch(function(){})},20000);
+load();
+</script>
+</body>
+</html>
